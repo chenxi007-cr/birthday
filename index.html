@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>HAPPY BIRTDAY</title>
+    <title>HAPPY BIRTHDAY</title>
     
     <!-- Three.js & OrbitControls -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -561,6 +561,13 @@
         candleMesh.castShadow = !isMobile;
         cakeGroup.add(candleMesh);
 
+        // Invisible touch hitbox for mobile accuracy
+        const hitBoxGeo = new THREE.CylinderGeometry(0.5, 0.5, 2.2, 16);
+        const hitBoxMat = new THREE.MeshBasicMaterial({ visible: false });
+        const candleHitBox = new THREE.Mesh(hitBoxGeo, hitBoxMat);
+        candleHitBox.position.set(0, 2.3, 0);
+        cakeGroup.add(candleHitBox);
+
         const wickGeo = new THREE.CylinderGeometry(0.008, 0.008, 0.1, 8);
         const wickMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
         const wick = new THREE.Mesh(wickGeo, wickMat);
@@ -602,29 +609,92 @@
         cakeGroup.add(flame);
         candleLight.position.set(0, 3.0, 0);
 
-        // Candle Smoke Particle System
-        const smokeParticleCount = isMobile ? 25 : 45;
-        const smokeGeo = new THREE.BufferGeometry();
-        const smokePos = new Float32Array(smokeParticleCount * 3);
+        // Web Audio Synthesizer Engine
+        class FireworkSoundEngine {
+            constructor() {
+                this.ctx = null;
+            }
 
-        for (let i = 0; i < smokeParticleCount; i++) {
-            smokePos[i * 3] = (Math.random() - 0.5) * 0.08;
-            smokePos[i * 3 + 1] = 2.85 + Math.random() * 0.2;
-            smokePos[i * 3 + 2] = (Math.random() - 0.5) * 0.08;
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    if (AudioCtx) this.ctx = new AudioCtx();
+                }
+                if (this.ctx && this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            playLaunchSound() {
+                if (!this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(220, now);
+                    osc.frequency.exponentialRampToValueAtTime(750, now + 0.35);
+
+                    gain.gain.setValueAtTime(0.08, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+
+                    osc.start(now);
+                    osc.stop(now + 0.35);
+                } catch(e){}
+            }
+
+            playExplosionSound() {
+                if (!this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+
+                    const subOsc = this.ctx.createOscillator();
+                    const subGain = this.ctx.createGain();
+                    subOsc.type = 'triangle';
+                    subOsc.frequency.setValueAtTime(140, now);
+                    subOsc.frequency.exponentialRampToValueAtTime(30, now + 0.5);
+
+                    subGain.gain.setValueAtTime(0.65, now);
+                    subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+
+                    subOsc.connect(subGain);
+                    subGain.connect(this.ctx.destination);
+                    subOsc.start(now);
+                    subOsc.stop(now + 0.55);
+
+                    const bufferSize = this.ctx.sampleRate * 0.5;
+                    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                    const data = buffer.getChannelData(0);
+                    for (let i = 0; i < bufferSize; i++) {
+                        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 1.8);
+                    }
+
+                    const noise = this.ctx.createBufferSource();
+                    noise.buffer = buffer;
+
+                    const filter = this.ctx.createBiquadFilter();
+                    filter.type = 'bandpass';
+                    filter.frequency.setValueAtTime(1200, now);
+                    filter.Q.setValueAtTime(1.5, now);
+
+                    const noiseGain = this.ctx.createGain();
+                    noiseGain.gain.setValueAtTime(0.38, now);
+                    noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+
+                    noise.connect(filter);
+                    filter.connect(noiseGain);
+                    noiseGain.connect(this.ctx.destination);
+
+                    noise.start(now);
+                } catch(e){}
+            }
         }
 
-        smokeGeo.setAttribute('position', new THREE.BufferAttribute(smokePos, 3));
-
-        const smokeMat = new THREE.PointsMaterial({
-            color: 0xdddddd,
-            size: 0.09,
-            transparent: true,
-            opacity: 0,
-            depthWrite: false
-        });
-
-        const smokeParticles = new THREE.Points(smokeGeo, smokeMat);
-        cakeGroup.add(smokeParticles);
+        const soundSynth = new FireworkSoundEngine();
 
         function createParticleTexture() {
             const canvas = document.createElement('canvas');
@@ -656,13 +726,7 @@
                 this.sparks = [];
                 
                 this.palette = [
-                    0xff0055, // Electric Crimson
-                    0xffd700, // Champagne Gold
-                    0x00ff88, // Emerald Green
-                    0x12d6ff, // Royal Cyan
-                    0xb100ff, // Deep Violet
-                    0xff3300, // Flame Orange
-                    0xffffff  // Pearl White
+                    0xff0055, 0xffd700, 0x00ff88, 0x12d6ff, 0xb100ff, 0xff3300, 0xffffff
                 ];
                 
                 this.types = ['CHRYSANTHEMUM', 'WILLOW', 'PEONY', 'RING', 'STROBE', 'DOUBLE_BURST'];
@@ -709,7 +773,7 @@
                     type: fireworkType
                 });
 
-                playFireworkLaunchSound();
+                soundSynth.playLaunchSound();
             }
 
             explode(pos, colorHex, type) {
@@ -809,11 +873,11 @@
                     velocities: velocities,
                     type: type,
                     life: 1.0,
-                    decay: type === 'WILLOW' ? 0.006 : (0.011 + Math.random() * 0.005),
+                    decay: type === 'WILLOW' ? 0.005 : (0.009 + Math.random() * 0.005),
                     gravity: gravity
                 });
 
-                playFireworkExplosionSound();
+                soundSynth.playExplosionSound();
             }
 
             update(time) {
@@ -821,7 +885,6 @@
                     fireworkFlashLight.intensity *= 0.86;
                 }
 
-                // Update Flying Rockets
                 for (let i = this.rockets.length - 1; i >= 0; i--) {
                     const r = this.rockets[i];
                     r.pos.y += r.velY;
@@ -843,7 +906,6 @@
                     }
                 }
 
-                // Update Bursting Sparks
                 for (let i = this.sparks.length - 1; i >= 0; i--) {
                     const s = this.sparks[i];
                     s.life -= s.decay;
@@ -866,207 +928,55 @@
 
                     for (let j = 0; j < s.velocities.length; j++) {
                         const v = s.velocities[j];
-                        positions[j * 3] += v.x;
-                        positions[j * 3 + 1] += v.y;
-                        positions[j * 3 + 2] += v.z;
-
+                        v.y -= s.gravity;
                         v.x *= v.drag;
                         v.y *= v.drag;
                         v.z *= v.drag;
-                        v.y -= s.gravity;
 
-                        v.x += (Math.random() - 0.5) * 0.0008;
-                        v.z += (Math.random() - 0.5) * 0.0008;
+                        positions[j * 3] += v.x;
+                        positions[j * 3 + 1] += v.y;
+                        positions[j * 3 + 2] += v.z;
                     }
-
                     s.mesh.geometry.attributes.position.needsUpdate = true;
                 }
             }
         }
 
-        const fireworks = new UltraRealisticFireworksSystem(scene);
+        const fireworksEngine = new UltraRealisticFireworksSystem(scene);
+        let fireworkTimer = null;
 
-        let audioCtx = null;
-        let isAudioPlaying = false;
-        let isAudioUnlocked = false;
+        function startGrandFireworksShow() {
+            soundSynth.init();
+            let launched = 0;
 
-        function initAudioContext() {
-            if (!audioCtx) {
-                const AudioContext = window.AudioContext || window.webkitAudioContext;
-                if (AudioContext) {
-                    audioCtx = new AudioContext();
+            fireworkTimer = setInterval(() => {
+                fireworksEngine.launchRocket();
+                launched++;
+                if (launched > 28) {
+                    clearInterval(fireworkTimer);
                 }
-            }
-            if (audioCtx && audioCtx.state === 'suspended') {
-                audioCtx.resume();
-            }
-        }
-
-        function unlockMobileAudio() {
-            if (isAudioUnlocked) return;
-            initAudioContext();
-            
-            // Unlock HTML5 Audio
-            const bgm = document.getElementById('bgm');
-            if (bgm) {
-                bgm.play().then(() => bgm.pause()).catch(() => {});
-            }
-
-            // Play silent buffer to unlock Web Audio on iOS/WeChat
-            if (audioCtx) {
-                const buffer = audioCtx.createBuffer(1, 1, 22050);
-                const source = audioCtx.createBufferSource();
-                source.buffer = buffer;
-                source.connect(audioCtx.destination);
-                source.start(0);
-            }
-
-            isAudioUnlocked = true;
-        }
-
-        class BirthdaySongSynthesizer {
-            constructor(ctx) {
-                this.ctx = ctx;
-                this.isPlaying = false;
-                this.timer = null;
-                this.notes = [
-                    { f: 261.63, d: 0.35 }, { f: 261.63, d: 0.15 }, { f: 293.66, d: 0.5 }, { f: 261.63, d: 0.5 }, { f: 349.23, d: 0.5 }, { f: 329.63, d: 0.9 },
-                    { f: 261.63, d: 0.35 }, { f: 261.63, d: 0.15 }, { f: 293.66, d: 0.5 }, { f: 261.63, d: 0.5 }, { f: 392.00, d: 0.5 }, { f: 349.23, d: 0.9 },
-                    { f: 261.63, d: 0.35 }, { f: 261.63, d: 0.15 }, { f: 523.25, d: 0.5 }, { f: 440.00, d: 0.5 }, { f: 349.23, d: 0.5 }, { f: 329.63, d: 0.5 }, { f: 293.66, d: 0.8 },
-                    { f: 466.16, d: 0.35 }, { f: 466.16, d: 0.15 }, { f: 440.00, d: 0.5 }, { f: 349.23, d: 0.5 }, { f: 392.00, d: 0.5 }, { f: 349.23, d: 1.0 }
-                ];
-                this.currentIndex = 0;
-            }
-
-            playNextNote() {
-                if (!this.isPlaying || !this.ctx) return;
-                const note = this.notes[this.currentIndex];
-                const osc = this.ctx.createOscillator();
-                const gain = this.ctx.createGain();
-                
-                osc.type = 'triangle';
-                osc.frequency.setValueAtTime(note.f, this.ctx.currentTime);
-                
-                gain.gain.setValueAtTime(0.22, this.ctx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + note.d * 0.95);
-                
-                osc.connect(gain);
-                gain.connect(this.ctx.destination);
-                
-                osc.start();
-                osc.stop(this.ctx.currentTime + note.d);
-
-                this.currentIndex = (this.currentIndex + 1) % this.notes.length;
-                this.timer = setTimeout(() => this.playNextNote(), note.d * 1050);
-            }
-
-            start() {
-                if (this.isPlaying) return;
-                this.isPlaying = true;
-                this.currentIndex = 0;
-                this.playNextNote();
-            }
-
-            stop() {
-                this.isPlaying = false;
-                if (this.timer) clearTimeout(this.timer);
-            }
-        }
-
-        let synthPlayer = null;
-
-        function playFireworkLaunchSound() {
-            if (!audioCtx) return;
-            const now = audioCtx.currentTime;
-
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(200 + Math.random() * 100, now);
-            osc.frequency.exponentialRampToValueAtTime(1200 + Math.random() * 300, now + 0.38);
-
-            gain.gain.setValueAtTime(0.12, now);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
-
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
-
-            osc.start(now);
-            osc.stop(now + 0.38);
-        }
-
-        function playFireworkExplosionSound() {
-            if (!audioCtx) return;
-            const now = audioCtx.currentTime;
-
-            // Sub-Bass Heavy Boom
-            const subOsc = audioCtx.createOscillator();
-            const subGain = audioCtx.createGain();
-
-            subOsc.type = 'sine';
-            subOsc.frequency.setValueAtTime(150 + Math.random() * 30, now);
-            subOsc.frequency.exponentialRampToValueAtTime(20, now + 0.65);
-
-            subGain.gain.setValueAtTime(0.85, now);
-            subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
-
-            subOsc.connect(subGain);
-            subGain.connect(audioCtx.destination);
-
-            subOsc.start(now);
-            subOsc.stop(now + 0.65);
-
-            // Sparkling Crackle
-            const bufferSize = Math.floor(audioCtx.sampleRate * 0.6);
-            const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-            const data = buffer.getChannelData(0);
-            for (let i = 0; i < bufferSize; i++) {
-                data[i] = Math.random() * 2 - 1;
-            }
-
-            const noise = audioCtx.createBufferSource();
-            noise.buffer = buffer;
-
-            const filter = audioCtx.createBiquadFilter();
-            filter.type = 'bandpass';
-            filter.frequency.setValueAtTime(1400, now);
-            filter.frequency.linearRampToValueAtTime(220, now + 0.6);
-            filter.Q.value = 1.4;
-
-            const noiseGain = audioCtx.createGain();
-            noiseGain.gain.setValueAtTime(0.4, now);
-            noiseGain.gain.exponentialRampToValueAtTime(0.005, now + 0.6);
-
-            noise.connect(filter);
-            filter.connect(noiseGain);
-            noiseGain.connect(audioCtx.destination);
-
-            noise.start(now);
-            noise.stop(now + 0.6);
+            }, 420);
         }
 
         let isLit = true;
         let isBlowing = false;
+        const bgm = document.getElementById('bgm');
         const audioBtn = document.getElementById('audioBtn');
         const wishCard = document.getElementById('wishCard');
         const modalOverlay = document.getElementById('modalOverlay');
         const relightBtn = document.getElementById('relightBtn');
 
         function toggleAudio() {
-            unlockMobileAudio();
-            if (!synthPlayer) {
-                synthPlayer = new BirthdaySongSynthesizer(audioCtx);
-            }
-
-            if (isAudioPlaying) {
-                synthPlayer.stop();
+            soundSynth.init();
+            if (bgm.src && bgm.paused) {
+                bgm.play().then(() => {
+                    audioBtn.classList.add('playing');
+                }).catch(() => {});
+            } else if (bgm.src) {
+                bgm.pause();
                 audioBtn.classList.remove('playing');
-                isAudioPlaying = false;
             } else {
-                synthPlayer.start();
-                audioBtn.classList.add('playing');
-                isAudioPlaying = true;
+                audioBtn.classList.toggle('playing');
             }
         }
 
@@ -1075,15 +985,14 @@
             toggleAudio();
         });
 
-        const touchUnlockEvents = ['pointerdown', 'touchstart', 'click'];
-        touchUnlockEvents.forEach(evt => {
-            window.addEventListener(evt, () => {
-                unlockMobileAudio();
-                if (!isAudioPlaying && synthPlayer === null) {
-                    toggleAudio();
-                }
-            }, { once: true });
-        });
+        const unlockAudio = () => {
+            soundSynth.init();
+            window.removeEventListener('touchstart', unlockAudio);
+            window.removeEventListener('pointerdown', unlockAudio);
+        };
+
+        window.addEventListener('touchstart', unlockAudio, { passive: true });
+        window.addEventListener('pointerdown', unlockAudio, { passive: true });
 
         function blowOutCandle() {
             if (!isLit || isBlowing) return;
@@ -1092,47 +1001,20 @@
             flame.visible = false;
             candleLight.intensity = 0;
 
-            smokeMat.opacity = 0.65;
-            let smokeProgress = 0;
-
-            const smokeAnim = setInterval(() => {
-                smokeProgress += 0.02;
-                const positions = smokeGeo.attributes.position.array;
-
-                for (let i = 0; i < smokeParticleCount; i++) {
-                    positions[i * 3 + 1] += 0.014;
-                    positions[i * 3] += Math.sin(smokeProgress * 5 + i) * 0.0035;
-                }
-                smokeGeo.attributes.position.needsUpdate = true;
-                smokeMat.opacity = Math.max(0, 0.65 - smokeProgress * 0.55);
-
-                if (smokeProgress >= 1.2) {
-                    clearInterval(smokeAnim);
-                    isBlowing = false;
-                    isLit = false;
-                }
-            }, 16);
-
-            triggerContinuousFireworks();
+            startGrandFireworksShow();
 
             setTimeout(() => {
                 modalOverlay.classList.add('active');
-            }, 6500);
+            }, 1800);
         }
 
         function relightCandle() {
             isLit = true;
+            isBlowing = false;
             flame.visible = true;
             candleLight.intensity = 3.5;
             modalOverlay.classList.remove('active');
-
-            const positions = smokeGeo.attributes.position.array;
-            for (let i = 0; i < smokeParticleCount; i++) {
-                positions[i * 3] = (Math.random() - 0.5) * 0.08;
-                positions[i * 3 + 1] = 2.85 + Math.random() * 0.2;
-                positions[i * 3 + 2] = (Math.random() - 0.5) * 0.08;
-            }
-            smokeGeo.attributes.position.needsUpdate = true;
+            if (fireworkTimer) clearInterval(fireworkTimer);
         }
 
         wishCard.addEventListener('click', blowOutCandle);
@@ -1141,47 +1023,35 @@
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
 
-        function handlePointerClick(event) {
-            const clientX = event.clientX || (event.touches && event.touches[0] ? event.touches[0].clientX : null);
-            const clientY = event.clientY || (event.touches && event.touches[0] ? event.touches[0].clientY : null);
-            
-            if (clientX === null || clientY === null) return;
+        let touchStartX = 0;
+        let touchStartY = 0;
 
+        function checkIntersect(clientX, clientY) {
             mouse.x = (clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(clientY / window.innerHeight) * 2 + 1;
 
             raycaster.setFromCamera(mouse, camera);
-            const intersects = raycaster.intersectObjects([candleMesh, flame.outer, flame.inner]);
+            
+            const intersects = raycaster.intersectObjects([candleMesh, flame.outer, flame.inner, candleHitBox]);
 
             if (intersects.length > 0) {
                 blowOutCandle();
             }
         }
 
-        window.addEventListener('click', handlePointerClick);
+        window.addEventListener('pointerdown', (e) => {
+            touchStartX = e.clientX;
+            touchStartY = e.clientY;
+        });
 
-        function triggerContinuousFireworks() {
-            let launchCount = 0;
-            const maxLaunches = isMobile ? 18 : 28;
+        window.addEventListener('pointerup', (e) => {
+            const dist = Math.hypot(e.clientX - touchStartX, e.clientY - touchStartY);
+            if (dist < 6) {
+                checkIntersect(e.clientX, e.clientY);
+            }
+        });
 
-            const interval = setInterval(() => {
-                if (launchCount >= maxLaunches) {
-                    clearInterval(interval);
-                    return;
-                }
-                
-                if (launchCount > 12) {
-                    fireworks.launchRocket();
-                    setTimeout(() => fireworks.launchRocket(), 150);
-                } else {
-                    fireworks.launchRocket();
-                }
-                
-                launchCount++;
-            }, isMobile ? 320 : 230);
-        }
-
-        const clock = new THREE.Clock();
+        let clock = new THREE.Clock();
 
         function animate() {
             requestAnimationFrame(animate);
@@ -1189,22 +1059,22 @@
             const time = clock.getElapsedTime();
 
             if (isLit) {
-                flame.scale.x = 1 + Math.sin(time * 15) * 0.09;
-                flame.scale.y = 1 + Math.cos(time * 19) * 0.13;
-                flame.rotation.z = Math.sin(time * 10) * 0.07;
-                candleLight.intensity = 3.2 + Math.sin(time * 24) * 0.5;
+                flame.scale.x = 1 + Math.sin(time * 14) * 0.08;
+                flame.scale.y = 1 + Math.cos(time * 18) * 0.12;
+                flame.rotation.z = Math.sin(time * 9) * 0.06;
+
+                candleLight.intensity = 3.2 + Math.sin(time * 22) * 0.5;
             }
 
-            fireworks.update(time);
+            fireworksEngine.update(time);
+
             cakeGroup.rotation.y = time * 0.12;
 
             controls.update();
             renderer.render(scene, camera);
         }
 
-        window.onload = function() {
-            animate();
-        };
+        animate();
 
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
